@@ -73,7 +73,6 @@ def test_create_user_conflict_email(client, test_user):
     assert response.json() == {'detail': 'Email already exists'}
 
 
-
 def test_update_user(client, test_user):
     updated_user = {
         'username': 'updated_user',
@@ -92,6 +91,7 @@ def test_update_user(client, test_user):
         'username': updated_user['username'],
         'email': updated_user['email'],
     }
+
 
 def test_update_user_not_found(client):
     updated_user = {
@@ -114,7 +114,23 @@ def test_delete_user(client, test_user):
     assert response.status_code == HTTPStatus.OK
     assert response.json() == {'message': 'User deleted'}
 
+
 def test_delete_user_not_found(client):
     response = client.delete('/users/999')
     assert response.status_code == HTTPStatus.NOT_FOUND
     assert response.json() == {'detail': 'User not found'}
+
+
+def test_get_token(client, test_user):
+    response = client.post(
+        '/token',
+        data={
+            'username': test_user.email,
+            'password': test_user.clean_password,
+        },
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    token = response.json()
+    assert token['token_type'] == 'Bearer'
+    assert 'access_token' in token
