@@ -13,6 +13,7 @@ from fast_zero.security import (
     get_password_hash,
     verify_password,
     create_access_token,
+    get_current_user,
 )
 
 app = FastAPI()
@@ -75,50 +76,37 @@ def create_user(user: UserSchema, session: Session = Depends(get_session)):
 @app.put(
     '/users/{user_id}', status_code=HTTPStatus.OK, response_model=UserPublic
 )
-def update_user(user_id: int, user: UserSchema, session=Depends(get_session)):
-    db_user = session.get(User, user_id)
-    if not db_user:
-        raise HTTPException(
-            status_code=HTTPStatus.NOT_FOUND, detail='User not found'
-        )
+def update_user(
+    user_id: int,
+    user: UserSchema,
+    session=Depends(get_session),
+    current_user=Depends(get_current_user),
+):
+    if current_user.id != user_id:
+        raise HTTPException(status_code=400, detail='Not enough permission')
 
-    existing_user = session.scalar(
-        select(User).where(
-            ((User.username == user.username) | (User.email == user.email))
-            & (User.id != user_id)
-        )
-    )
-    if existing_user:
-        if existing_user.username == user.username:
-            raise HTTPException(
-                status_code=HTTPStatus.CONFLICT,
-                detail='Username already exists',
-            )
-        raise HTTPException(
-            status_code=HTTPStatus.CONFLICT,
-            detail='Email already exists',
-        )
-
-    db_user.username = user.username
-    db_user.email = user.email
-    db_user.password = get_password_hash(user.password)
+    current_user.username = user.username
+    current_user.email = user.email
+    current_user.password = get_password_hash(user.password)
 
     session.commit()
-    session.refresh(db_user)
+    session.refresh(current_user)
 
-    return db_user
+    return current_user
 
 
 @app.delete(
     '/users/{user_id}', status_code=HTTPStatus.OK, response_model=Message
 )
-def delete_user(user_id: int, session=Depends(get_session)):
-    db_user = session.get(User, user_id)
-    if not db_user:
-        raise HTTPException(
-            status_code=HTTPStatus.NOT_FOUND, detail='User not found'
-        )
-    session.delete(db_user)
+def delete_user(
+    user_id: int,
+    session=Depends(get_session),
+    current_user=Depends(get_current_user),
+):
+    if current_user.id != user_id:
+        raise HTTPException(status_code=400, detail='Not enough permission')
+
+    session.delete(current_user)
     session.commit()
     return Message(message='User deleted')
 
@@ -128,9 +116,7 @@ def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),
     session=Depends(get_session),
 ):
-    user = session.scalar(
-        select(User).where(User.email == form_data.username)
-    )  # checa se o user existe
+    user = session.scalar(select(User).where(User.email == form_data.username))
 
     if not user or not verify_password(form_data.password, user.password):
         raise HTTPException(
